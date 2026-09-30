@@ -212,7 +212,6 @@ static int even_pinctrl_set(int pin, int state)
 			printk("set err, pin(%d) state(%d)\n", pin, state);
 			break;
 	}
-	printk("pin(%d) state(%d), ret:%d\n", pin, state, ret);
 
 	return ret;
 }
@@ -557,9 +556,18 @@ static ssize_t torchbrightness_store(struct device *dev,
 	else if (value > TORCH_PWM_LEVELS)
 		value = TORCH_PWM_LEVELS;
 
+	if (value == even_torch_level)
+		return size;
+
+	/*
+	 * Level change while the torch is already on must only rewrite the
+	 * PWM duty.  Power-cycling here (even_disable() + even_torch_enable())
+	 * blanks the LED, drives the dimming pin full-high for the mdelay(6)
+	 * and flips the pad between PWM0 and GPIO, which is visible as flicker
+	 * on every brightness step.
+	 */
 	if (value > 0 && even_torch_level > 0) {
-		even_disable();
-		even_torch_enable(torch_pwm_table[value - 1]);
+		even_mt_flashlight_led_set_pwm(0, torch_pwm_table[value - 1]);
 	} else if (value > 0 && even_torch_level == 0) {
 		even_set_driver(1);
 		even_torch_enable(torch_pwm_table[value - 1]);
